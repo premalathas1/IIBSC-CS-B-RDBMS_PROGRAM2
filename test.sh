@@ -1,184 +1,116 @@
 #!/bin/bash
 
-MYSQL="mysql -h127.0.0.1 -P3306 -uroot -proot"
+set -u
+
+DB="CollegeDB"
+USER="root"
+PASSWORD="${MYSQL_PASSWORD:-root}"
+
+MYSQL="mysql -u${USER} -p${PASSWORD} -N -B"
 
 echo "========================================"
-echo " Student Table SQL Assignment"
+echo "RDBMS AUTOGRADER - STUDENT TABLE"
 echo "========================================"
 
-if [ ! -f "student_solution.sql" ]; then
-    echo "FAIL: student_solution.sql file not found."
+# Create a fresh database so every submission is tested independently.
+$MYSQL -e "DROP DATABASE IF EXISTS ${DB};"
+if [ $? -ne 0 ]; then
+    echo "FAIL: Could not reset database."
     exit 1
 fi
 
-echo "Creating fresh CollegeDB database..."
-
-$MYSQL -e "DROP DATABASE IF EXISTS CollegeDB;"
-$MYSQL -e "CREATE DATABASE CollegeDB;"
-
-echo "Executing student_solution.sql..."
-
-# Execute SQL and capture errors
-if ! $MYSQL CollegeDB < student_solution.sql; then
-    echo ""
-    echo "FAIL: Error while executing student_solution.sql"
-    echo "Please check your SQL syntax."
+$MYSQL -e "CREATE DATABASE ${DB};"
+if [ $? -ne 0 ]; then
+    echo "FAIL: Could not create database."
     exit 1
 fi
 
-echo ""
-echo "Checking Student table..."
-
-TABLE=$($MYSQL -N -s CollegeDB -e "
-SELECT TABLE_NAME
-FROM INFORMATION_SCHEMA.TABLES
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student';")
-
-if [ "$TABLE" != "Student" ]; then
-    echo "FAIL: Student table was not created."
-    echo ""
-    echo "Tables currently found:"
-    $MYSQL CollegeDB -e "SHOW TABLES;"
+if [ ! -s student_solution.sql ]; then
+    echo "FAIL: student_solution.sql is empty."
     exit 1
 fi
 
-echo "PASS: Student table created."
-
-MARKS=2
-
-# Test Case 1 - StudentID
-RESULT=$($MYSQL -N -s -e "
-SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='StudentID';")
-
-if [ "$RESULT" -eq 1 ]; then
-    echo "PASS: StudentID exists."
-    MARKS=$((MARKS + 1))
-else
-    echo "FAIL: StudentID missing."
+# Execute the student's SQL.
+$MYSQL "${DB}" < student_solution.sql
+if [ $? -ne 0 ]; then
+    echo "FAIL: student_solution.sql contains SQL errors."
+    exit 1
 fi
 
-# Test Case 2 - StudentName
-RESULT=$($MYSQL -N -s -e "
-SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='StudentName';")
+PASS=0
+TOTAL=10
 
-if [ "$RESULT" -eq 1 ]; then
-    echo "PASS: StudentName exists."
-    MARKS=$((MARKS + 1))
-else
-    echo "FAIL: StudentName missing."
+check() {
+    label="$1"
+    condition="$2"
+    if eval "$condition"; then
+        echo "PASS: $label"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL: $label"
+    fi
+}
+
+# 1. Table exists
+TABLE_EXISTS=$($MYSQL -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${DB}' AND table_name='Student';")
+check "Student table exists" "[ \"$TABLE_EXISTS\" = \"1\" ]"
+
+# If the table does not exist, remaining schema tests cannot be meaningful.
+if [ "$TABLE_EXISTS" != "1" ]; then
+    echo "Score: 1/10"
+    exit 1
 fi
 
-# Test Case 3 - DOB
-RESULT=$($MYSQL -N -s -e "
-SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='DOB'
-AND DATA_TYPE='date';")
+# Get column metadata from information_schema.
+get_column() {
+    col="$1"
+    $MYSQL -e "SELECT CONCAT(column_type,'|',is_nullable,'|',column_key) FROM information_schema.columns WHERE table_schema='${DB}' AND table_name='Student' AND column_name='${col}';"
+}
 
-if [ "$RESULT" -eq 1 ]; then
-    echo "PASS: DOB exists with DATE datatype."
-    MARKS=$((MARKS + 1))
-else
-    echo "FAIL: DOB missing or datatype is incorrect."
-fi
+# 2. StudentID type
+META=$(get_column "StudentID")
+check "StudentID is INT" "echo \"$META\" | cut -d'|' -f1 | grep -Eq '^int$'"
 
-# Test Case 4 - Gender
-RESULT=$($MYSQL -N -s -e "
-SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='Gender';")
+# 3. StudentID NOT NULL
+check "StudentID is NOT NULL" "echo \"$META\" | cut -d'|' -f2 | grep -Eq '^NO$'"
 
-if [ "$RESULT" -eq 1 ]; then
-    echo "PASS: Gender exists."
-    MARKS=$((MARKS + 1))
-else
-    echo "FAIL: Gender missing."
-fi
+# 4. StudentID PRIMARY KEY
+check "StudentID is PRIMARY KEY" "echo \"$META\" | cut -d'|' -f3 | grep -Eq '^PRI$'"
 
-# Test Case 5 - DepartmentID
-RESULT=$($MYSQL -N -s -e "
-SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND COLUMN_NAME='DepartmentID';")
+# 5. StudentName VARCHAR(20) and NOT NULL
+META=$(get_column "StudentName")
+check "StudentName is VARCHAR(20) and NOT NULL" "echo \"$META\" | grep -Eq '^varchar\\(20\\)\\|NO\\|' "
 
-if [ "$RESULT" -eq 1 ]; then
-    echo "PASS: DepartmentID exists."
-    MARKS=$((MARKS + 1))
-else
-    echo "FAIL: DepartmentID missing."
-fi
+# 7. StudentName UNIQUE
+UNIQUE_NAME=$($MYSQL -e "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema='${DB}' AND table_name='Student' AND column_name='StudentName' AND non_unique=0;")
+check "StudentName is UNIQUE" "[ \"$UNIQUE_NAME\" -ge 1 ]"
 
-# Test Case 6 - Primary Key
-RESULT=$($MYSQL -N -s -e "
-SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND CONSTRAINT_NAME='PRIMARY'
-AND COLUMN_NAME='StudentID';")
+# 8. DOB DATE and NOT NULL
+META=$(get_column "DOB")
+check "DOB is DATE" "echo \"$META\" | cut -d'|' -f1 | grep -Eq '^date$'"
+check "DOB is NOT NULL" "echo \"$META\" | cut -d'|' -f2 | grep -Eq '^NO$'"
 
-if [ "$RESULT" -eq 1 ]; then
-    echo "PASS: StudentID is Primary Key."
-    MARKS=$((MARKS + 1))
-else
-    echo "FAIL: StudentID is not Primary Key."
-fi
+# 9. Gender VARCHAR(10) and NOT NULL
+META=$(get_column "Gender")
+check "Gender is VARCHAR(10) and NOT NULL" "echo \"$META\" | grep -Eq '^varchar\\(10\\)\\|NO\\|'"
 
-# Test Case 7 - UNIQUE
-RESULT=$($MYSQL -N -s -e "
-SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.STATISTICS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND NON_UNIQUE=0
-AND INDEX_NAME <> 'PRIMARY';")
+# 10. DepartmentID INT and NOT NULL
+META=$(get_column "DepartmentID")
+check "DepartmentID is INT and NOT NULL" "echo \"$META\" | grep -Eq '^int\\|NO\\|'"
 
-if [ "$RESULT" -ge 1 ]; then
-    echo "PASS: UNIQUE constraint exists."
-    MARKS=$((MARKS + 1))
-else
-    echo "FAIL: UNIQUE constraint missing."
-fi
-
-# Test Case 8 - NOT NULL
-RESULT=$($MYSQL -N -s -e "
-SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA='CollegeDB'
-AND TABLE_NAME='Student'
-AND IS_NULLABLE='NO';")
-
-if [ "$RESULT" -ge 4 ]; then
-    echo "PASS: NOT NULL constraints exist."
-    MARKS=$((MARKS + 1))
-else
-    echo "FAIL: Required NOT NULL constraints missing."
-fi
-
-echo ""
+# Count the required checks explicitly.
+# There are 11 individual checks above; the assignment score is capped at 10.
 echo "========================================"
-echo "Total Marks: $MARKS / 10"
+if [ "$PASS" -gt "$TOTAL" ]; then
+    PASS=$TOTAL
+fi
+echo "Passed checks: $PASS / $TOTAL"
 echo "========================================"
 
-if [ "$MARKS" -eq 10 ]; then
-    echo "SUCCESS: All test cases passed."
+if [ "$PASS" -eq "$TOTAL" ]; then
+    echo "AUTOGRADING: PASS"
     exit 0
 else
-    echo "Some test cases failed."
+    echo "AUTOGRADING: FAIL"
     exit 1
 fi
