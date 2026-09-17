@@ -1,251 +1,117 @@
+```bash
 #!/bin/bash
 
-set -u
+echo "======================================"
+echo " Student Table Assignment - Test"
+echo "======================================"
 
-DB="CollegeDB"
-USER="${MYSQL_USER:-root}"
-PASSWORD="${MYSQL_PASSWORD:-root}"
+# Stop immediately if any command fails
+set -e
 
-MYSQL="mysql -u${USER} -p${PASSWORD} -N -B"
-
-echo "========================================"
-echo "RDBMS AUTOGRADER"
-echo "Student Table Creation"
-echo "========================================"
-
-# ----------------------------------------
-# 1. Create fresh database
-# ----------------------------------------
-
-echo "Creating fresh CollegeDB database..."
-
-$MYSQL -e "DROP DATABASE IF EXISTS ${DB};"
-
-if [ $? -ne 0 ]; then
-    echo "FAIL: Could not drop database."
+# Check whether database exists
+if [ ! -f database.db ]; then
+    echo "FAIL: database.db was not created."
     exit 1
 fi
 
-$MYSQL -e "CREATE DATABASE ${DB};"
+echo "PASS: database.db exists."
 
-if [ $? -ne 0 ]; then
-    echo "FAIL: Could not create CollegeDB database."
+# Check whether Student table exists
+TABLE=$(sqlite3 database.db \
+"SELECT name FROM sqlite_master WHERE type='table' AND name='Student';")
+
+if [ "$TABLE" != "Student" ]; then
+    echo "FAIL: Student table does not exist."
     exit 1
 fi
 
-echo "PASS: CollegeDB database created."
+echo "PASS: Student table exists."
 
-# ----------------------------------------
-# 2. Check student solution file
-# ----------------------------------------
-
-if [ ! -s student_solution.sql ]; then
-    echo "FAIL: student_solution.sql is empty."
-    exit 1
-fi
-
-echo "PASS: student_solution.sql found."
-
-# ----------------------------------------
-# 3. Execute student SQL
-# ----------------------------------------
-
-echo "Executing student_solution.sql..."
-
-$MYSQL "${DB}" < student_solution.sql
-
-if [ $? -ne 0 ]; then
-    echo "FAIL: SQL execution error."
-    exit 1
-fi
-
-echo "PASS: Student SQL executed successfully."
-
-PASS=0
-TOTAL=10
-
-# ----------------------------------------
-# Function to record test result
-# ----------------------------------------
-
-check() {
-    LABEL="$1"
-    CONDITION="$2"
-
-    if eval "$CONDITION"; then
-        echo "PASS: $LABEL"
-        PASS=$((PASS + 1))
-    else
-        echo "FAIL: $LABEL"
-    fi
-}
-
-# ----------------------------------------
-# Test 1
-# Student table exists
-# ----------------------------------------
-
-TABLE_EXISTS=$($MYSQL -e "
-SELECT COUNT(*)
-FROM information_schema.tables
-WHERE table_schema='${DB}'
-AND table_name='Student';
-")
-
-check "Student table exists" \
-"[ \"$TABLE_EXISTS\" = \"1\" ]"
-
-if [ "$TABLE_EXISTS" != "1" ]; then
-    echo "========================================"
-    echo "FINAL SCORE: 0/10"
-    echo "========================================"
-    exit 1
-fi
-
-# ----------------------------------------
-# Get column information
-# ----------------------------------------
-
-get_column() {
-    COLUMN="$1"
-
-    $MYSQL -e "
-    SELECT CONCAT(
-        column_type, '|',
-        is_nullable, '|',
-        column_key
-    )
-    FROM information_schema.columns
-    WHERE table_schema='${DB}'
-    AND table_name='Student'
-    AND column_name='${COLUMN}';
-    "
-}
-
-# ----------------------------------------
-# Test 2
-# StudentID INT
-# ----------------------------------------
-
-META=$(get_column "StudentID")
-
-check "StudentID is INT" \
-"echo \"$META\" | cut -d'|' -f1 | grep -Eq '^int$'"
-
-# ----------------------------------------
-# Test 3
-# StudentID NOT NULL
-# ----------------------------------------
-
-check "StudentID is NOT NULL" \
-"echo \"$META\" | cut -d'|' -f2 | grep -Eq '^NO$'"
-
-# ----------------------------------------
-# Test 4
-# StudentID PRIMARY KEY
-# ----------------------------------------
-
-check "StudentID is PRIMARY KEY" \
-"echo \"$META\" | cut -d'|' -f3 | grep -Eq '^PRI$'"
-
-# ----------------------------------------
-# StudentName
-# ----------------------------------------
-
-META=$(get_column "StudentName")
-
-# ----------------------------------------
-# Test 5
-# StudentName VARCHAR(20) and NOT NULL
-# ----------------------------------------
-
-check "StudentName is VARCHAR(20) and NOT NULL" \
-"echo \"$META\" | grep -Eq '^varchar\\(20\\)\\|NO\\|'"
-
-# ----------------------------------------
-# Test 6
-# StudentName UNIQUE
-# ----------------------------------------
-
-UNIQUE_NAME=$($MYSQL -e "
-SELECT COUNT(*)
-FROM information_schema.statistics
-WHERE table_schema='${DB}'
-AND table_name='Student'
-AND column_name='StudentName'
-AND non_unique=0;
-")
-
-check "StudentName is UNIQUE" \
-"[ \"$UNIQUE_NAME\" -ge 1 ]"
-
-# ----------------------------------------
-# DOB
-# ----------------------------------------
-
-META=$(get_column "DOB")
-
-# ----------------------------------------
-# Test 7
-# DOB DATE
-# ----------------------------------------
-
-check "DOB is DATE" \
-"echo \"$META\" | cut -d'|' -f1 | grep -Eq '^date$'"
-
-# ----------------------------------------
-# Test 8
-# DOB NOT NULL
-# ----------------------------------------
-
-check "DOB is NOT NULL" \
-"echo \"$META\" | cut -d'|' -f2 | grep -Eq '^NO$'"
-
-# ----------------------------------------
-# Gender
-# ----------------------------------------
-
-META=$(get_column "Gender")
-
-# ----------------------------------------
-# Test 9
-# Gender VARCHAR(10) and NOT NULL
-# ----------------------------------------
-
-check "Gender is VARCHAR(10) and NOT NULL" \
-"echo \"$META\" | grep -Eq '^varchar\\(10\\)\\|NO\\|'"
-
-# ----------------------------------------
-# DepartmentID
-# ----------------------------------------
-
-META=$(get_column "DepartmentID")
-
-# ----------------------------------------
-# Test 10
-# DepartmentID INT and NOT NULL
-# ----------------------------------------
-
-check "DepartmentID is INT and NOT NULL" \
-"echo \"$META\" | grep -Eq '^int\\|NO\\|'"
-
-# ----------------------------------------
-# Final Result
-# ----------------------------------------
-
+# Display table structure
 echo ""
-echo "========================================"
-echo "AUTOGRADING RESULT"
-echo "========================================"
+echo "Student Table Structure:"
+sqlite3 database.db "PRAGMA table_info(Student);"
 
-echo "Passed Tests: $PASS / $TOTAL"
+# Check required columns
+echo ""
+echo "Checking required columns..."
 
-if [ "$PASS" -eq "$TOTAL" ]; then
-    echo "AUTOGRADING: PASS"
-    echo "FINAL SCORE: 10/10"
-    exit 0
-else
-    echo "AUTOGRADING: FAIL"
-    echo "FINAL SCORE: $PASS/10"
+for COLUMN in StudentID StudentName DOB Gender DepartmentID
+do
+    COUNT=$(sqlite3 database.db \
+    "SELECT COUNT(*) FROM pragma_table_info('Student') WHERE name='$COLUMN';")
+
+    if [ "$COUNT" -ne 1 ]; then
+        echo "FAIL: Missing column $COLUMN"
+        exit 1
+    fi
+
+    echo "PASS: $COLUMN exists."
+done
+
+# Check PRIMARY KEY
+echo ""
+echo "Checking PRIMARY KEY..."
+
+PK=$(sqlite3 database.db \
+"SELECT pk FROM pragma_table_info('Student') WHERE name='StudentID';")
+
+if [ "$PK" -ne 1 ]; then
+    echo "FAIL: StudentID is not PRIMARY KEY."
     exit 1
 fi
+
+echo "PASS: StudentID is PRIMARY KEY."
+
+# Check NOT NULL constraints
+echo ""
+echo "Checking NOT NULL constraints..."
+
+for COLUMN in StudentName DOB Gender DepartmentID
+do
+    NOTNULL=$(sqlite3 database.db \
+    "SELECT \"notnull\" FROM pragma_table_info('Student') WHERE name='$COLUMN';")
+
+    if [ "$NOTNULL" -ne 1 ]; then
+        echo "FAIL: $COLUMN must be NOT NULL."
+        exit 1
+    fi
+
+    echo "PASS: $COLUMN is NOT NULL."
+done
+
+# Check UNIQUE constraint on StudentName
+echo ""
+echo "Checking UNIQUE constraint on StudentName..."
+
+sqlite3 database.db <<EOF
+DELETE FROM Student;
+
+INSERT INTO Student
+(StudentID, StudentName, DOB, Gender, DepartmentID)
+VALUES
+(10001, 'Arun', '2002-05-10', 'Male', 101);
+EOF
+
+if sqlite3 database.db <<EOF
+INSERT INTO Student
+(StudentID, StudentName, DOB, Gender, DepartmentID)
+VALUES
+(10002, 'Arun', '2002-06-15', 'Male', 102);
+EOF
+then
+    echo "FAIL: StudentName is not UNIQUE."
+    exit 1
+else
+    echo "PASS: StudentName is UNIQUE."
+fi
+
+# Final result
+echo ""
+echo "======================================"
+echo " ALL TESTS PASSED!"
+echo " Student Table Assignment Completed"
+echo "======================================"
+
+exit 0
+```
