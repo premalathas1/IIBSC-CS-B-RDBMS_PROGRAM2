@@ -1,31 +1,16 @@
-name: RDBMS Autograding
+- name: Install MySQL
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y mysql-server
 
-on:
-  push:
-  workflow_dispatch:
+- name: Start MySQL
+  run: |
+    sudo systemctl start mysql
+    sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';"
 
-jobs:
-  grade:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout student submission
-        uses: actions/checkout@v4
-
-      - name: Install MySQL
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mysql-server
-
-      - name: Start MySQL
-        run: |
-          sudo systemctl start mysql
-          sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';"
-          sudo systemctl restart mysql
-
-      - name: Run autograder
-        env:
-          MYSQL_PASSWORD: root
-        run: |
-          chmod +x test.sh
-          ./test.sh
+- name: Run autograder
+  env:
+    MYSQL_PASSWORD: root
+  run: |
+    chmod +x test.sh
+    ./test.sh
