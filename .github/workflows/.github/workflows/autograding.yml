@@ -1,0 +1,91 @@
+```yaml
+name: Student Table Autograding
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+
+  student-table-test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # --------------------------------
+      # Checkout repository
+      # --------------------------------
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+
+      # --------------------------------
+      # Check assignment files
+      # --------------------------------
+
+      - name: Check Required Files
+        run: |
+          echo "Checking assignment files..."
+
+          test -f starter.sql
+          test -f test.sh
+
+          echo "PASS: Required files are available."
+
+
+      # --------------------------------
+      # Install SQLite
+      # --------------------------------
+
+      - name: Install SQLite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlite3
+
+
+      # --------------------------------
+      # Create database
+      # --------------------------------
+
+      - name: Create SQLite Database
+        run: |
+          echo "Creating database..."
+
+          rm -f database.db
+
+          sqlite3 database.db < starter.sql
+
+          echo "Database created successfully."
+
+
+      # --------------------------------
+      # Make test.sh executable
+      # --------------------------------
+
+      - name: Prepare Test Script
+        run: |
+          chmod +x test.sh
+
+
+      # --------------------------------
+      # Run tests
+      # --------------------------------
+
+      - name: Run Student Tests
+        run: |
+          ./test.sh
+
+
+      # --------------------------------
+      # Final message
+      # --------------------------------
+
+      - name: Assignment Completed
+        run: |
+          echo "======================================"
+          echo " STUDENT TABLE ASSIGNMENT COMPLETED"
+          echo " ALL AUTOMATED TESTS PASSED"
+          echo "======================================"
+```
