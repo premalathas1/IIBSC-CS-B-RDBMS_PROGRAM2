@@ -1,6 +1,5 @@
-- name: Configure MySQL
+- name: Create Database
   run: |
-    sudo mysql -e "CREATE DATABASE IF NOT EXISTS student_db;"
-    sudo mysql -e "CREATE USER IF NOT EXISTS 'testuser'@'localhost' IDENTIFIED BY 'testpass';"
-    sudo mysql -e "GRANT ALL PRIVILEGES ON student_db.* TO 'testuser'@'localhost';"
-    sudo mysql -e "FLUSH PRIVILEGES;"
+    mysql -h 127.0.0.1 -P 3306 -uroot -prootpass <<'SQL'
+    CREATE DATABASE IF NOT EXISTS rdbms_db;
+    SQL
