@@ -1,58 +1,31 @@
-name: Student Table SQL Autograding
+name: RDBMS Autograding
 
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  autograde:
+  grade:
     runs-on: ubuntu-latest
 
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h127.0.0.1 -uroot -proot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=20
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout student submission
         uses: actions/checkout@v4
 
-      - name: Install MySQL Client
+      - name: Install MySQL
         run: |
           sudo apt-get update
-          sudo apt-get install -y mysql-client
+          sudo apt-get install -y mysql-server
 
-      - name: Wait for MySQL Server
+      - name: Start MySQL
         run: |
-          until mysqladmin ping -h127.0.0.1 -uroot -proot --silent
-          do
-            echo "Waiting for MySQL..."
-            sleep 2
-          done
+          sudo systemctl start mysql
+          sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';"
+          sudo systemctl restart mysql
 
-          echo "MySQL is ready."
-
-      - name: Show Repository Files
-        run: |
-          ls -la
-
-      - name: Show Student SQL File
-        run: |
-          echo "===== student_solution.sql ====="
-          cat student_solution.sql
-
-      - name: Make Test Script Executable
+      - name: Run autograder
+        env:
+          MYSQL_PASSWORD: root
         run: |
           chmod +x test.sh
-
-      - name: Run Autograding Tests
-        run: |
           ./test.sh
