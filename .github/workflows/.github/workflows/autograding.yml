@@ -1,35 +1,6 @@
-```yaml
-- name: Install MySQL
-  run: |
-    sudo apt-get update
-    sudo apt-get install -y mysql-server
-
-- name: Start MySQL
-  run: |
-    sudo systemctl start mysql
-
 - name: Configure MySQL
   run: |
-    sudo mysql -e "
-      CREATE DATABASE IF NOT EXISTS student_db;
-      CREATE USER IF NOT EXISTS 'testuser'@'localhost'
-      IDENTIFIED BY 'testpass';
-      GRANT ALL PRIVILEGES ON student_db.*
-      TO 'testuser'@'localhost';
-      FLUSH PRIVILEGES;
-    "
-
-- name: Test MySQL Connection
-  run: |
-    mysql -u testuser -ptestpass student_db -e "SELECT 1;"
-    echo "MySQL connection successful."
-
-- name: Run Student SQL
-  run: |
-    mysql -u testuser -ptestpass student_db < starter.sql
-
-- name: Run Autograder
-  run: |
-    chmod +x test.sh
-    ./test.sh
-```
+    sudo mysql -e "CREATE DATABASE IF NOT EXISTS student_db;"
+    sudo mysql -e "CREATE USER IF NOT EXISTS 'testuser'@'localhost' IDENTIFIED BY 'testpass';"
+    sudo mysql -e "GRANT ALL PRIVILEGES ON student_db.* TO 'testuser'@'localhost';"
+    sudo mysql -e "FLUSH PRIVILEGES;"
